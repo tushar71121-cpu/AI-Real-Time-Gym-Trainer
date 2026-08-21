@@ -23,10 +23,18 @@ from services.tracking.metrics import sync_metrics_update
 from groq import Groq
 from services.coaching.llm import LLMCoach
 from services.coaching.tts import TextToSpeech
-from services.coaching.voice_pipeline import VoicePipeline, autoplay_audio
+from services.coaching.voice_pipeline import (
+    VoicePipeline,
+    autoplay_audio,
+)
 
 
 def main():
+
+    # =========================================================
+    # PAGE CONFIG
+    # =========================================================
+
     st.set_page_config(
         page_icon="🏋️‍♀️",
         page_title="AI Real-time GYM Coach",
@@ -34,38 +42,54 @@ def main():
         layout="centered",
     )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # STATIC FILES
-    # ---------------------------------------------------------
+    # =========================================================
+
     load_css(
-        os.path.join(os.getcwd(), "static", "style.css")
+        os.path.join(
+            os.getcwd(),
+            "static",
+            "style.css",
+        )
     )
 
     inject_local_font(
-        os.path.join(os.getcwd(), "static", "AdobeClean.otf"),
+        os.path.join(
+            os.getcwd(),
+            "static",
+            "AdobeClean.otf",
+        ),
         "AdobeClean",
     )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # DATABASE
-    # ---------------------------------------------------------
+    # =========================================================
+
     init_db()
 
-    # ---------------------------------------------------------
+    # =========================================================
     # LOGIN
-    # ---------------------------------------------------------
+    # =========================================================
+
     if not render_login_wall():
         return
 
     initial_session_defaults()
 
-    # ---------------------------------------------------------
-    # GROQ + VOICE PIPELINE
-    # ---------------------------------------------------------
-    if "voice_pipeline" not in st.session_state:
+    # =========================================================
+    # GROQ MODEL DEBUG
+    # =========================================================
+
+    if "groq_models_checked" not in st.session_state:
 
         try:
-            api_key = os.environ.get("GROQ_API_KEY", "")
+
+            api_key = os.environ.get(
+                "GROQ_API_KEY",
+                "",
+            )
 
             if (
                 not api_key
@@ -75,75 +99,102 @@ def main():
                 api_key = st.secrets["GROQ_API_KEY"]
 
             if not api_key:
-                st.warning(
-                    "⚠️ GROQ_API_KEY is not configured. "
-                    "Add it in Streamlit Cloud → Settings → Secrets."
+
+                st.error(
+                    "❌ GROQ_API_KEY is missing.\n\n"
+                    "Go to Streamlit Cloud → "
+                    "Manage app → Settings → Secrets "
+                    "and add GROQ_API_KEY."
                 )
 
                 st.session_state.voice_pipeline = None
 
             else:
-                groq_client = Groq(api_key=api_key)
+
+                groq_client = Groq(
+                    api_key=api_key
+                )
 
                 # -------------------------------------------------
-                # TEMPORARY GROQ MODEL DEBUG
+                # GET MODELS AVAILABLE TO THIS API KEY
                 # -------------------------------------------------
+
                 models = groq_client.models.list()
 
                 available_models = [
-                    model.id for model in models.data
+                    model.id
+                    for model in models.data
                 ]
 
-                st.info("🔍 Available Groq Models")
-
-                st.write(available_models)
-
-                # -------------------------------------------------
-                # CREATE COACH
-                # -------------------------------------------------
-                llm_coach = LLMCoach(groq_client)
-
-                tts = TextToSpeech()
-
-                st.session_state.voice_pipeline = VoicePipeline(
-                    llm_coach,
-                    tts,
+                st.success(
+                    "✅ Groq API key is working!"
                 )
 
+                st.subheader(
+                    "🔍 Available Groq Models"
+                )
+
+                st.code(
+                    "\n".join(
+                        available_models
+                    )
+                )
+
+                # -------------------------------------------------
+                # TEMPORARILY DISABLE VOICE PIPELINE
+                # -------------------------------------------------
+
+                st.session_state.voice_pipeline = None
+
+                st.session_state.groq_models_checked = True
+
         except Exception as e:
-            st.session_state.voice_pipeline = None
 
             st.error(
-                f"❌ Groq initialization failed: {type(e).__name__}"
+                f"❌ Groq Error\n\n"
+                f"{type(e).__name__}: {e}"
             )
 
-    # ---------------------------------------------------------
+            st.session_state.voice_pipeline = None
+
+    # =========================================================
     # WORKOUT STATE
-    # ---------------------------------------------------------
+    # =========================================================
+
     workout_started = st.session_state.get(
         "workout_started",
         False,
     )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # SIDEBAR
-    # ---------------------------------------------------------
+    # =========================================================
+
     with st.sidebar:
 
-        st.title("🏋️‍♂️ Apna AI Coach")
+        st.title(
+            "🏋️‍♂️ Apna AI Coach"
+        )
 
-        if st.session_state.get("username"):
+        if st.session_state.get(
+            "username"
+        ):
+
             st.caption(
-                f"👤 Login as {st.session_state.username}"
+                f"👤 Login as "
+                f"{st.session_state.username}"
             )
 
         st.divider()
 
-        st.subheader("Workout Plan")
+        st.subheader(
+            "Workout Plan"
+        )
 
-        # -----------------------------------------------------
+        # =====================================================
         # START WORKOUT
-        # -----------------------------------------------------
+        # =====================================================
+
         if not workout_started:
 
             plan_exercise = st.selectbox(
@@ -178,36 +229,35 @@ def main():
 
             if start_session_button:
 
-                st.session_state.exercise_type = plan_exercise
-                st.session_state.target_sets = int(plan_sets)
-                st.session_state.reps_per_set = int(plan_reps)
+                st.session_state.exercise_type = (
+                    plan_exercise
+                )
+
+                st.session_state.target_sets = (
+                    int(plan_sets)
+                )
+
+                st.session_state.reps_per_set = (
+                    int(plan_reps)
+                )
 
                 st.session_state.reps = 0
 
                 st.session_state.workout_started = True
 
-                st.session_state.set_cycle_started_at = time.time()
+                st.session_state.set_cycle_started_at = (
+                    time.time()
+                )
 
                 st.session_state.last_saved_sets_completed = 0
 
-                # ---------------------------------------------
-                # AI COACH
-                # ---------------------------------------------
-                if st.session_state.get("voice_pipeline"):
+                # -------------------------------------------------
+                # VOICE PIPELINE TEMPORARILY DISABLED
+                # -------------------------------------------------
 
-                    result = (
-                        st.session_state.voice_pipeline.process_event(
-                            event="workout_started",
-                            exercise=plan_exercise,
-                            metrics={},
-                        )
-                    )
-
-                    if result:
-                        (
-                            st.session_state.audio_to_play,
-                            st.session_state.coach_feedback,
-                        ) = result
+                # Groq model is currently being tested.
+                # Voice feedback will be enabled after
+                # we identify the correct available model.
 
                 st.session_state.last_notified_sets_completed = 0
 
@@ -215,9 +265,10 @@ def main():
 
                 st.rerun()
 
-        # -----------------------------------------------------
+        # =====================================================
         # END WORKOUT
-        # -----------------------------------------------------
+        # =====================================================
+
         else:
 
             exercise = st.session_state.get(
@@ -233,7 +284,8 @@ def main():
             )
 
             st.info(
-                f"**{exercise}** -- {sets} Sets / {reps} Reps"
+                f"**{exercise}** -- "
+                f"{sets} Sets / {reps} Reps"
             )
 
             end_session_button = st.button(
@@ -246,27 +298,12 @@ def main():
 
                 st.session_state.workout_started = False
 
-                if st.session_state.get("voice_pipeline"):
-
-                    result = (
-                        st.session_state.voice_pipeline.process_event(
-                            event="workout_completed",
-                            exercise=exercise,
-                            metrics={},
-                        )
-                    )
-
-                    if result:
-                        (
-                            st.session_state.audio_to_play,
-                            st.session_state.coach_feedback,
-                        ) = result
-
                 st.rerun()
 
-        # -----------------------------------------------------
+        # =====================================================
         # PROGRESS
-        # -----------------------------------------------------
+        # =====================================================
+
         if workout_started:
 
             st.divider()
@@ -300,7 +337,9 @@ def main():
                 0,
             )
 
-            st.subheader("Progress")
+            st.subheader(
+                "Progress"
+            )
 
             st.metric(
                 "Total Reps",
@@ -319,12 +358,15 @@ def main():
 
             st.divider()
 
-            # -------------------------------------------------
+            # =================================================
             # SQUATS
-            # -------------------------------------------------
+            # =================================================
+
             if exercise == "Squats":
 
-                st.subheader("Squat Metrics")
+                st.subheader(
+                    "Squat Metrics"
+                )
 
                 st.metric(
                     "Knee Angle",
@@ -341,12 +383,15 @@ def main():
                     st.session_state.depth_status,
                 )
 
-            # -------------------------------------------------
-            # PUSH-UPS
-            # -------------------------------------------------
+            # =================================================
+            # PUSH UPS
+            # =================================================
+
             elif exercise == "Push-ups":
 
-                st.subheader("Push-up Metrics")
+                st.subheader(
+                    "Push-up Metrics"
+                )
 
                 st.metric(
                     "Elbow Angle",
@@ -363,12 +408,15 @@ def main():
                     st.session_state.hip_status,
                 )
 
-            # -------------------------------------------------
+            # =================================================
             # BICEPS
-            # -------------------------------------------------
+            # =================================================
+
             elif exercise == "Biceps Curls (Dumbbell)":
 
-                st.subheader("Curl Metrics")
+                st.subheader(
+                    "Curl Metrics"
+                )
 
                 st.metric(
                     "Elbow Angle",
@@ -385,12 +433,15 @@ def main():
                     st.session_state.swing_status,
                 )
 
-            # -------------------------------------------------
+            # =================================================
             # SHOULDER PRESS
-            # -------------------------------------------------
+            # =================================================
+
             elif exercise == "Shoulder Press":
 
-                st.subheader("Shoulder Press Metrics")
+                st.subheader(
+                    "Shoulder Press Metrics"
+                )
 
                 st.metric(
                     "Elbow Angle",
@@ -407,12 +458,15 @@ def main():
                     st.session_state.back_arch_status,
                 )
 
-            # -------------------------------------------------
+            # =================================================
             # LUNGES
-            # -------------------------------------------------
+            # =================================================
+
             elif exercise == "Lunges":
 
-                st.subheader("Lunge Metrics")
+                st.subheader(
+                    "Lunge Metrics"
+                )
 
                 st.metric(
                     "Front Knee Angle",
@@ -429,38 +483,43 @@ def main():
                     st.session_state.balance_status,
                 )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # MAIN TITLE
-    # ---------------------------------------------------------
-    st.title("AI Real-time GYM Coach")
+    # =========================================================
+
+    st.title(
+        "AI Real-time GYM Coach"
+    )
 
     st.markdown(
         "#### Real-time pose detection with proactive AI coaching"
     )
 
-    # ---------------------------------------------------------
-    # AUDIO
-    # ---------------------------------------------------------
-    if st.session_state.get("audio_to_play"):
+    # =========================================================
+    # COACH FEEDBACK
+    # =========================================================
+
+    if st.session_state.get(
+        "audio_to_play"
+    ):
+
         autoplay_audio(
             st.session_state.audio_to_play
         )
 
-    # ---------------------------------------------------------
-    # COACH FEEDBACK
-    # ---------------------------------------------------------
-    if st.session_state.get("coach_feedback"):
-
-        st.markdown("")
+    if st.session_state.get(
+        "coach_feedback"
+    ):
 
         st.success(
             f"🤖 **Coach:** "
             f"{st.session_state.coach_feedback}"
         )
 
-    # ---------------------------------------------------------
+    # =========================================================
     # WORKOUT NOT STARTED
-    # ---------------------------------------------------------
+    # =========================================================
+
     if not workout_started:
 
         st.markdown(
@@ -489,15 +548,17 @@ def main():
             unsafe_allow_html=True,
         )
 
-    # ---------------------------------------------------------
-    # WORKOUT STARTED
-    # ---------------------------------------------------------
+    # =========================================================
+    # WORKOUT CAMERA
+    # =========================================================
+
     else:
 
         context = webrtc_streamer(
             key="exercise-analysis",
             mode=WebRtcMode.SENDRECV,
             video_processor_factory=VideoProcessorClass,
+
             rtc_configuration={
                 "iceServers": [
                     {
@@ -507,14 +568,18 @@ def main():
                     }
                 ]
             },
+
             media_stream_constraints={
                 "video": True,
                 "audio": False,
             },
+
             async_processing=True,
         )
 
-        sync_metrics_update(context)
+        sync_metrics_update(
+            context
+        )
 
         if context.state.playing:
 
@@ -524,19 +589,25 @@ def main():
 
         inject_webrtc_styles()
 
-    # ---------------------------------------------------------
+    # =========================================================
     # WORKOUT HISTORY
-    # ---------------------------------------------------------
+    # =========================================================
+
     st.divider()
 
-    st.markdown("#### Workout History")
+    st.markdown(
+        "#### Workout History"
+    )
 
     user_id = st.session_state.get(
         "user_id",
         0,
     )
 
-    if isinstance(user_id, int):
+    if isinstance(
+        user_id,
+        int,
+    ):
 
         history_rows = get_users_exercises(
             user_id
@@ -553,17 +624,24 @@ def main():
             for row in history_rows
         ]
 
-        df = pd.DataFrame(arr)
+        df = pd.DataFrame(
+            arr
+        )
 
         if not df.empty:
 
-            df["Date"] = pd.to_datetime(
-                df["Date"]
-            ).dt.date
+            df["Date"] = (
+                pd.to_datetime(
+                    df["Date"]
+                ).dt.date
+            )
 
             agg_df = (
                 df.groupby(
-                    ["Exercise", "Date"]
+                    [
+                        "Exercise",
+                        "Date",
+                    ]
                 )
                 .agg(
                     {
@@ -588,6 +666,10 @@ def main():
                 "No workout history found."
             )
 
+
+# =============================================================
+# RUN APP
+# =============================================================
 
 if __name__ == "__main__":
     main()
