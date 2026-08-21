@@ -6,6 +6,7 @@ import mediapipe as mp
 import threading
 
 from streamlit_webrtc import VideoProcessorBase
+
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -31,35 +32,36 @@ class VideoProcessorClass(VideoProcessorBase):
         self._exercise_type = "Squats"
 
         # =====================================================
-        # FIND PROJECT ROOT
+        # PROJECT ROOT
         # =====================================================
 
         # Current file:
         #
-        # Main App/services/vision/
-        # exercise_video_processor.py
+        # ai-real-time-gym-trainer/
+        # └── Main App/
+        #     └── services/
+        #         └── vision/
+        #             └── exercise_video_processor.py
         #
-        # Go up 4 levels:
+        # We need to go:
         #
-        # vision
-        # services
-        # Main App
-        # project root
+        # vision -> services -> Main App -> project root
 
-        current_file = os.path.abspath(__file__)
+        current_dir = os.path.dirname(
+            os.path.abspath(__file__)
+        )
 
-        project_root = os.path.dirname(
-            os.path.dirname(
-                os.path.dirname(
-                    os.path.dirname(
-                        current_file
-                    )
-                )
+        project_root = os.path.abspath(
+            os.path.join(
+                current_dir,
+                "..",
+                "..",
+                ".."
             )
         )
 
         # =====================================================
-        # MEDIAPIPE MODEL
+        # MEDIAPIPE MODEL PATH
         # =====================================================
 
         model_path = os.path.join(
@@ -69,34 +71,60 @@ class VideoProcessorClass(VideoProcessorBase):
         )
 
         print(
-            f"MediaPipe model path: {model_path}"
+            "========================================"
+        )
+        print(
+            "MediaPipe Model Path:"
+        )
+        print(
+            model_path
+        )
+        print(
+            "========================================"
         )
 
-        # Check model exists
-        if not os.path.isfile(model_path):
+        # =====================================================
+        # CHECK MODEL
+        # =====================================================
+
+        if not os.path.exists(model_path):
 
             raise FileNotFoundError(
-                "\n\n"
-                "❌ MediaPipe model file not found!\n\n"
-                f"Expected path:\n{model_path}\n\n"
-                "Make sure your GitHub repository contains:\n"
-                "ml_models/pose_landmarker_full.task\n"
+                f"""
+❌ MediaPipe model file not found.
+
+Expected location:
+
+{model_path}
+
+Your project should contain:
+
+ai-real-time-gym-trainer/
+├── Main App/
+├── ml_models/
+│   └── pose_landmarker_full.task
+├── static/
+└── requirements.txt
+"""
             )
 
         # =====================================================
-        # MEDIAPIPE POSE LANDMARKER
+        # MEDIAPIPE BASE OPTIONS
         # =====================================================
 
         base_options = python.BaseOptions(
             model_asset_path=model_path
         )
 
+        # =====================================================
+        # POSE LANDMARKER OPTIONS
+        # =====================================================
+
         options = vision.PoseLandmarkerOptions(
+
             base_options=base_options,
 
-            running_mode=(
-                vision.RunningMode.VIDEO
-            ),
+            running_mode=vision.RunningMode.VIDEO,
 
             min_pose_detection_confidence=0.7,
 
@@ -106,6 +134,10 @@ class VideoProcessorClass(VideoProcessorBase):
 
             output_segmentation_masks=False,
         )
+
+        # =====================================================
+        # CREATE POSE LANDMARKER
+        # =====================================================
 
         try:
 
@@ -118,11 +150,17 @@ class VideoProcessorClass(VideoProcessorBase):
         except Exception as e:
 
             raise RuntimeError(
-                "\n\n"
-                "❌ MediaPipe PoseLandmarker "
-                "failed to initialize.\n\n"
-                f"Model path:\n{model_path}\n\n"
-                f"Original error:\n{type(e).__name__}: {e}\n"
+                f"""
+❌ MediaPipe PoseLandmarker failed.
+
+Model:
+
+{model_path}
+
+Error:
+
+{type(e).__name__}: {e}
+"""
             ) from e
 
         # =====================================================
@@ -161,9 +199,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
         with self._lock:
 
-            self._latest_metrics = (
-                metrics.copy()
-            )
+            self._latest_metrics = metrics.copy()
 
     def get_latest_metrics(self):
 
@@ -183,9 +219,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
         with self._lock:
 
-            self._exercise_type = (
-                exercise_type
-            )
+            self._exercise_type = exercise_type
 
     def get_exercise(self):
 
@@ -206,10 +240,17 @@ class VideoProcessorClass(VideoProcessorBase):
         h, w = img.shape[:2]
 
         # -----------------------------------------------------
-        # CONNECTIONS
+        # SKELETON CONNECTIONS
         # -----------------------------------------------------
 
         for start_idx, end_idx in POSE_CONNECTIONS:
+
+            if (
+                start_idx >= len(landmarks)
+                or
+                end_idx >= len(landmarks)
+            ):
+                continue
 
             p1 = landmarks[start_idx]
             p2 = landmarks[end_idx]
@@ -221,6 +262,7 @@ class VideoProcessorClass(VideoProcessorBase):
             ):
 
                 cv2.line(
+
                     img,
 
                     (
@@ -287,7 +329,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
             2,
 
-            cv2.LINE_AA,
+            cv2.LINE_AA
         )
 
         cv2.putText(
@@ -306,7 +348,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
             2,
 
-            cv2.LINE_AA,
+            cv2.LINE_AA
         )
 
     # =========================================================
@@ -367,11 +409,16 @@ class VideoProcessorClass(VideoProcessorBase):
 
         h, _ = img.shape[:2]
 
+        depth = metrics.get(
+            "depth_status",
+            "N/A"
+        )
+
         cv2.putText(
 
             img,
 
-            f"DEPTH: {metrics.get('depth_status', 'N/A')}",
+            f"DEPTH: {depth}",
 
             (20, h - 20),
 
@@ -381,7 +428,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
             (0, 255, 0),
 
-            2,
+            2
         )
 
     # =========================================================
@@ -420,11 +467,11 @@ class VideoProcessorClass(VideoProcessorBase):
 
             (0, 255, 0),
 
-            2,
+            2
         )
 
     # =========================================================
-    # CURL OVERLAY
+    # BICEPS CURL OVERLAY
     # =========================================================
 
     def _draw_curl_overlays(
@@ -454,7 +501,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
             (0, 255, 0),
 
-            2,
+            2
         )
 
     # =========================================================
@@ -493,7 +540,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
             (0, 255, 0),
 
-            2,
+            2
         )
 
     # =========================================================
@@ -527,11 +574,11 @@ class VideoProcessorClass(VideoProcessorBase):
 
             (0, 255, 0),
 
-            2,
+            2
         )
 
     # =========================================================
-    # RECEIVE VIDEO FRAME
+    # PROCESS VIDEO FRAME
     # =========================================================
 
     def recv(
@@ -540,14 +587,17 @@ class VideoProcessorClass(VideoProcessorBase):
     ):
 
         # -----------------------------------------------------
-        # FRAME → NUMPY
+        # FRAME TO NUMPY
         # -----------------------------------------------------
 
         image = frame.to_ndarray(
             format="bgr24"
         )
 
-        # Mirror camera
+        # -----------------------------------------------------
+        # MIRROR CAMERA
+        # -----------------------------------------------------
+
         image = cv2.flip(
             image,
             1
@@ -559,7 +609,7 @@ class VideoProcessorClass(VideoProcessorBase):
         )
 
         # -----------------------------------------------------
-        # BGR → RGB
+        # BGR -> RGB
         # -----------------------------------------------------
 
         rgb_image = cv2.cvtColor(
@@ -568,14 +618,12 @@ class VideoProcessorClass(VideoProcessorBase):
         )
 
         # -----------------------------------------------------
-        # MEDIAPIPE IMAGE
+        # CREATE MEDIAPIPE IMAGE
         # -----------------------------------------------------
 
         mp_image = mp.Image(
 
-            image_format=(
-                mp.ImageFormat.SRGB
-            ),
+            image_format=mp.ImageFormat.SRGB,
 
             data=rgb_image
         )
@@ -587,7 +635,7 @@ class VideoProcessorClass(VideoProcessorBase):
         self._frame_timestamps_ms += 30
 
         # -----------------------------------------------------
-        # POSE DETECTION
+        # DETECT POSE
         # -----------------------------------------------------
 
         result = (
@@ -603,9 +651,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
         if result.pose_landmarks:
 
-            landmarks = (
-                result.pose_landmarks[0]
-            )
+            landmarks = result.pose_landmarks[0]
 
             # Draw skeleton
             self._draw_skeleton(
@@ -613,38 +659,32 @@ class VideoProcessorClass(VideoProcessorBase):
                 landmarks
             )
 
-            # Current exercise
-            ex_type = (
-                self.get_exercise()
-            )
+            # Get selected exercise
+            ex_type = self.get_exercise()
 
             # Get detector
-            detector = (
-                self._detectors.get(
-                    ex_type
-                )
+            detector = self._detectors.get(
+                ex_type
             )
 
             if detector:
 
                 try:
 
-                    metrics = (
-                        detector.process(
-                            landmarks
-                        )
+                    metrics = detector.process(
+                        landmarks
                     )
 
-                    metrics[
-                        "pose_detected"
-                    ] = True
+                    metrics["pose_detected"] = True
 
+                    # Draw metrics
                     self._draw_overlays(
                         image,
                         metrics,
                         ex_type
                     )
 
+                    # Save metrics
                     self.set_latest_metrics(
                         metrics
                     )
@@ -667,10 +707,7 @@ class VideoProcessorClass(VideoProcessorBase):
 
             with self._lock:
 
-                if (
-                    self._latest_metrics
-                    is not None
-                ):
+                if self._latest_metrics is not None:
 
                     self._latest_metrics[
                         "pose_detected"
