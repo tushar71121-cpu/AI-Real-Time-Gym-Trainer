@@ -3,21 +3,11 @@ from core.base_exercise import BaseExercise
 
 class ShoulderPressDetector(BaseExercise):
 
-    # =====================================================
-    # THRESHOLDS
-    # =====================================================
-
-    # Arm almost straight
+    # More practical thresholds
     UP_THRESHOLD = 150
-
-    # Elbow sufficiently bent
-    DOWN_THRESHOLD = 110
+    DOWN_THRESHOLD = 100
 
     MIN_VISIBILITY = 0.5
-
-    # =====================================================
-    # MEDIAPIPE LANDMARKS
-    # =====================================================
 
     LEFT_SHOULDER = 11
     LEFT_ELBOW = 13
@@ -33,34 +23,26 @@ class ShoulderPressDetector(BaseExercise):
     LEFT_KNEE = 25
     RIGHT_KNEE = 26
 
-    # =====================================================
-    # INIT
-    # =====================================================
-
     def __init__(self):
+
         super().__init__()
 
         self.reps = 0
         self.stage = None
-
-    # =====================================================
-    # RESET
-    # =====================================================
 
     def reset(self):
 
         self.reps = 0
         self.stage = None
 
-    # =====================================================
-    # PROCESS
-    # =====================================================
+    def process(
+        self,
+        landmarks
+    ):
 
-    def process(self, landmarks):
-
-        # =================================================
-        # CHECK ELBOW VISIBILITY
-        # =================================================
+        # =====================================================
+        # SELECT BETTER SIDE
+        # =====================================================
 
         left_vis = landmarks[
             self.LEFT_ELBOW
@@ -70,16 +52,11 @@ class ShoulderPressDetector(BaseExercise):
             self.RIGHT_ELBOW
         ].visibility
 
-        # =================================================
-        # SELECT BEST SIDE
-        # =================================================
-
         if left_vis >= right_vis:
 
             shoulder_idx = self.LEFT_SHOULDER
             elbow_idx = self.LEFT_ELBOW
             wrist_idx = self.LEFT_WRIST
-
             hip_idx = self.LEFT_HIP
             knee_idx = self.LEFT_KNEE
 
@@ -88,35 +65,12 @@ class ShoulderPressDetector(BaseExercise):
             shoulder_idx = self.RIGHT_SHOULDER
             elbow_idx = self.RIGHT_ELBOW
             wrist_idx = self.RIGHT_WRIST
-
             hip_idx = self.RIGHT_HIP
             knee_idx = self.RIGHT_KNEE
 
-        # =================================================
-        # ELBOW ANGLE
-        # =================================================
-
-        elbow_angle = self.calculate_angle(
-
-            self.get_point(
-                landmarks,
-                shoulder_idx
-            ),
-
-            self.get_point(
-                landmarks,
-                elbow_idx
-            ),
-
-            self.get_point(
-                landmarks,
-                wrist_idx
-            ),
-        )
-
-        # =================================================
-        # VISIBILITY CHECK
-        # =================================================
+        # =====================================================
+        # VISIBILITY
+        # =====================================================
 
         key_landmarks_visible = (
 
@@ -137,57 +91,94 @@ class ShoulderPressDetector(BaseExercise):
             ].visibility >= self.MIN_VISIBILITY
         )
 
-        # =================================================
-        # REP COUNTING
-        # =================================================
+        if not key_landmarks_visible:
 
-        if key_landmarks_visible:
+            return {
 
-            # ---------------------------------------------
-            # ARM IS UP / EXTENDED
-            # ---------------------------------------------
+                "reps": self.reps,
 
-            if elbow_angle >= self.UP_THRESHOLD:
+                "elbow_angle": 0,
 
-                self.stage = "up"
+                "extension_status":
+                    "N/A",
 
-            # ---------------------------------------------
-            # ARM COMES DOWN
-            # ---------------------------------------------
+                "back_arch_status":
+                    "N/A",
+            }
 
-            elif (
-                elbow_angle <= self.DOWN_THRESHOLD
-                and
-                self.stage == "up"
-            ):
+        # =====================================================
+        # ELBOW ANGLE
+        # =====================================================
 
-                self.stage = "down"
+        elbow_angle = self.calculate_angle(
 
-                self.reps += 1
+            self.get_point(
+                landmarks,
+                shoulder_idx
+            ),
 
-        # =================================================
-        # EXTENSION STATUS
-        # =================================================
+            self.get_point(
+                landmarks,
+                elbow_idx
+            ),
 
+            self.get_point(
+                landmarks,
+                wrist_idx
+            ),
+        )
+
+        # =====================================================
+        # REP LOGIC
+        # =====================================================
+
+        # ARM UP
         if elbow_angle >= self.UP_THRESHOLD:
 
-            extension_status = "FULL EXTENSION"
+            self.stage = "up"
 
-        elif elbow_angle >= 130:
+        # ARM DOWN
+        elif (
+            elbow_angle <= self.DOWN_THRESHOLD
+            and
+            self.stage == "up"
+        ):
 
-            extension_status = "NEARLY EXTENDED"
+            self.stage = "down"
 
-        elif elbow_angle >= self.DOWN_THRESHOLD:
+            self.reps += 1
 
-            extension_status = "PRESSING"
+        # =====================================================
+        # EXTENSION STATUS
+        # =====================================================
+
+        if elbow_angle >= 160:
+
+            extension_status = (
+                "FULL EXTENSION"
+            )
+
+        elif elbow_angle >= 140:
+
+            extension_status = (
+                "NEARLY EXTENDED"
+            )
+
+        elif elbow_angle >= 110:
+
+            extension_status = (
+                "PRESSING"
+            )
 
         else:
 
-            extension_status = "START POSITION"
+            extension_status = (
+                "START POSITION"
+            )
 
-        # =================================================
+        # =====================================================
         # BACK ANGLE
-        # =================================================
+        # =====================================================
 
         back_angle = self.calculate_angle(
 
@@ -207,9 +198,9 @@ class ShoulderPressDetector(BaseExercise):
             ),
         )
 
-        # =================================================
-        # BACK ARCH STATUS
-        # =================================================
+        # =====================================================
+        # BACK STATUS
+        # =====================================================
 
         if back_angle >= 160:
 
@@ -223,9 +214,9 @@ class ShoulderPressDetector(BaseExercise):
 
             back_arch_status = "Excessive Arch"
 
-        # =================================================
-        # RETURN METRICS
-        # =================================================
+        # =====================================================
+        # RETURN
+        # =====================================================
 
         return {
 
@@ -240,7 +231,4 @@ class ShoulderPressDetector(BaseExercise):
 
             "back_arch_status":
                 back_arch_status,
-
-            "pose_detected":
-                True,
         }
