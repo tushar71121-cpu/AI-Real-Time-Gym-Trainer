@@ -559,20 +559,90 @@ def main():
 
     else:
 
+        # -----------------------------------------------------
+        # READ TURN CREDENTIALS FROM STREAMLIT SECRETS
+        # -----------------------------------------------------
+
+        try:
+
+            turn_username = st.secrets["TURN_USERNAME"]
+            turn_password = st.secrets["TURN_PASSWORD"]
+
+        except Exception:
+
+            st.error(
+                "❌ TURN credentials are missing.\n\n"
+                "Go to Streamlit Cloud → "
+                "Manage app → Settings → Secrets "
+                "and add TURN_USERNAME and TURN_PASSWORD."
+            )
+
+            st.stop()
+
+        # -----------------------------------------------------
+        # WEBRTC / ICE CONFIGURATION
+        # -----------------------------------------------------
+
+        rtc_configuration = {
+            "iceServers": [
+
+                # STUN
+                {
+                    "urls": [
+                        "stun:stun.relay.metered.ca:80"
+                    ],
+                },
+
+                # TURN UDP
+                {
+                    "urls": [
+                        "turn:in.relay.metered.ca:80"
+                    ],
+                    "username": turn_username,
+                    "credential": turn_password,
+                },
+
+                # TURN TCP
+                {
+                    "urls": [
+                        "turn:in.relay.metered.ca:80?transport=tcp"
+                    ],
+                    "username": turn_username,
+                    "credential": turn_password,
+                },
+
+                # TURN TLS
+                {
+                    "urls": [
+                        "turn:in.relay.metered.ca:443"
+                    ],
+                    "username": turn_username,
+                    "credential": turn_password,
+                },
+
+                # TURN TLS + TCP
+                {
+                    "urls": [
+                        "turns:in.relay.metered.ca:443?transport=tcp"
+                    ],
+                    "username": turn_username,
+                    "credential": turn_password,
+                },
+            ]
+        }
+
+        # -----------------------------------------------------
+        # START WEBRTC
+        # -----------------------------------------------------
+
         context = webrtc_streamer(
             key="exercise-analysis",
+
             mode=WebRtcMode.SENDRECV,
+
             video_processor_factory=VideoProcessorClass,
 
-            rtc_configuration={
-                "iceServers": [
-                    {
-                        "urls": [
-                            "stun:stun.l.google.com:19302"
-                        ]
-                    }
-                ]
-            },
+            rtc_configuration=rtc_configuration,
 
             media_stream_constraints={
                 "video": True,
@@ -582,27 +652,25 @@ def main():
             async_processing=True,
         )
 
-        # =====================================================
-        # SYNC VIDEO PROCESSOR METRICS
-        # =====================================================
+        # -----------------------------------------------------
+        # SYNC METRICS
+        # -----------------------------------------------------
 
         sync_metrics_update(
             context
         )
 
         # IMPORTANT:
-        # Do NOT continuously call st.rerun() here.
         #
-        # Continuous reruns can interrupt the WebRTC
-        # connection and cause aioice / ICE errors.
+        # Do NOT continuously call:
         #
-        # The previous:
+        # st.rerun()
         #
-        # if context.state.playing:
-        #     time.sleep(0.25)
-        #     st.rerun()
+        # while WebRTC is playing.
         #
-        # has intentionally been removed.
+        # Continuous reruns can interrupt the ICE/WebRTC
+        # connection and cause aioice errors.
+        # -----------------------------------------------------
 
         inject_webrtc_styles()
 
