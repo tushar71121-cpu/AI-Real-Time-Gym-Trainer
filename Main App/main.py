@@ -21,12 +21,6 @@ from services.vision.exercise_video_processor import VideoProcessorClass
 from services.tracking.metrics import sync_metrics_update
 
 from groq import Groq
-from services.coaching.llm import LLMCoach
-from services.coaching.tts import TextToSpeech
-from services.coaching.voice_pipeline import (
-    VoicePipeline,
-    autoplay_audio,
-)
 
 
 def main():
@@ -115,10 +109,6 @@ def main():
                     api_key=api_key
                 )
 
-                # -------------------------------------------------
-                # GET MODELS AVAILABLE TO THIS API KEY
-                # -------------------------------------------------
-
                 models = groq_client.models.list()
 
                 available_models = [
@@ -140,10 +130,7 @@ def main():
                     )
                 )
 
-                # -------------------------------------------------
-                # TEMPORARILY DISABLE VOICE PIPELINE
-                # -------------------------------------------------
-
+                # Voice pipeline temporarily disabled
                 st.session_state.voice_pipeline = None
 
                 st.session_state.groq_models_checked = True
@@ -250,14 +237,6 @@ def main():
                 )
 
                 st.session_state.last_saved_sets_completed = 0
-
-                # -------------------------------------------------
-                # VOICE PIPELINE TEMPORARILY DISABLED
-                # -------------------------------------------------
-
-                # Groq model is currently being tested.
-                # Voice feedback will be enabled after
-                # we identify the correct available model.
 
                 st.session_state.last_notified_sets_completed = 0
 
@@ -577,15 +556,14 @@ def main():
             async_processing=True,
         )
 
+        # Sync processor metrics with Streamlit session state
         sync_metrics_update(
             context
         )
 
-        if context.state.playing:
-
-            time.sleep(0.25)
-
-            st.rerun()
+        # IMPORTANT:
+        # Do NOT call st.rerun() continuously here.
+        # Continuous reruns can interrupt the WebRTC/ICE connection.
 
         inject_webrtc_styles()
 
