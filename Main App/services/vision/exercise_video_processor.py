@@ -28,24 +28,17 @@ class VideoProcessorClass(VideoProcessorBase):
         # =====================================================
 
         self._lock = threading.Lock()
-        self._latest_metrics = None
+
+        self._latest_metrics = {
+            "reps": 0,
+            "pose_detected": False,
+        }
+
         self._exercise_type = "Squats"
 
         # =====================================================
         # PROJECT ROOT
         # =====================================================
-
-        # Current file:
-        #
-        # ai-real-time-gym-trainer/
-        # └── Main App/
-        #     └── services/
-        #         └── vision/
-        #             └── exercise_video_processor.py
-        #
-        # We need to go:
-        #
-        # vision -> services -> Main App -> project root
 
         current_dir = os.path.dirname(
             os.path.abspath(__file__)
@@ -61,7 +54,7 @@ class VideoProcessorClass(VideoProcessorBase):
         )
 
         # =====================================================
-        # MEDIAPIPE MODEL PATH
+        # MEDIAPIPE MODEL
         # =====================================================
 
         model_path = os.path.join(
@@ -82,10 +75,6 @@ class VideoProcessorClass(VideoProcessorBase):
         print(
             "========================================"
         )
-
-        # =====================================================
-        # CHECK MODEL
-        # =====================================================
 
         if not os.path.exists(model_path):
 
@@ -109,16 +98,12 @@ ai-real-time-gym-trainer/
             )
 
         # =====================================================
-        # MEDIAPIPE BASE OPTIONS
+        # MEDIAPIPE OPTIONS
         # =====================================================
 
         base_options = python.BaseOptions(
             model_asset_path=model_path
         )
-
-        # =====================================================
-        # POSE LANDMARKER OPTIONS
-        # =====================================================
 
         options = vision.PoseLandmarkerOptions(
 
@@ -126,17 +111,17 @@ ai-real-time-gym-trainer/
 
             running_mode=vision.RunningMode.VIDEO,
 
-            min_pose_detection_confidence=0.7,
+            min_pose_detection_confidence=0.5,
 
-            min_pose_presence_confidence=0.7,
+            min_pose_presence_confidence=0.5,
 
-            min_tracking_confidence=0.7,
+            min_tracking_confidence=0.5,
 
             output_segmentation_masks=False,
         )
 
         # =====================================================
-        # CREATE POSE LANDMARKER
+        # CREATE LANDMARKER
         # =====================================================
 
         try:
@@ -164,7 +149,7 @@ Error:
             ) from e
 
         # =====================================================
-        # EXERCISE DETECTORS
+        # DETECTORS
         # =====================================================
 
         self._detectors = {
@@ -186,7 +171,7 @@ Error:
         }
 
         # =====================================================
-        # VIDEO TIMESTAMP
+        # TIMESTAMP
         # =====================================================
 
         self._frame_timestamps_ms = 0
@@ -195,17 +180,22 @@ Error:
     # METRICS
     # =========================================================
 
-    def set_latest_metrics(self, metrics):
+    def set_latest_metrics(
+        self,
+        metrics
+    ):
 
         with self._lock:
 
-            self._latest_metrics = metrics.copy()
+            self._latest_metrics = (
+                metrics.copy()
+            )
 
     def get_latest_metrics(self):
 
         with self._lock:
 
-            if self._latest_metrics is None:
+            if not self._latest_metrics:
 
                 return None
 
@@ -215,11 +205,43 @@ Error:
     # EXERCISE
     # =========================================================
 
-    def set_exercise(self, exercise_type):
+    def set_exercise(
+        self,
+        exercise_type
+    ):
 
         with self._lock:
 
-            self._exercise_type = exercise_type
+            if (
+                exercise_type
+                != self._exercise_type
+            ):
+
+                self._exercise_type = (
+                    exercise_type
+                )
+
+                # Reset selected detector
+                detector = self._detectors.get(
+                    exercise_type
+                )
+
+                if detector and hasattr(
+                    detector,
+                    "reset"
+                ):
+
+                    detector.reset()
+
+                self._latest_metrics = {
+                    "reps": 0,
+                    "pose_detected": False,
+                }
+
+                print(
+                    f"Exercise changed to: "
+                    f"{exercise_type}"
+                )
 
     def get_exercise(self):
 
@@ -239,10 +261,6 @@ Error:
 
         h, w = img.shape[:2]
 
-        # -----------------------------------------------------
-        # SKELETON CONNECTIONS
-        # -----------------------------------------------------
-
         for start_idx, end_idx in POSE_CONNECTIONS:
 
             if (
@@ -250,15 +268,16 @@ Error:
                 or
                 end_idx >= len(landmarks)
             ):
+
                 continue
 
             p1 = landmarks[start_idx]
             p2 = landmarks[end_idx]
 
             if (
-                p1.visibility > 0.7
+                p1.visibility > 0.5
                 and
-                p2.visibility > 0.7
+                p2.visibility > 0.5
             ):
 
                 cv2.line(
@@ -277,16 +296,12 @@ Error:
 
                     (0, 255, 0),
 
-                    4
+                    3
                 )
-
-        # -----------------------------------------------------
-        # LANDMARK POINTS
-        # -----------------------------------------------------
 
         for lm in landmarks:
 
-            if lm.visibility > 0.7:
+            if lm.visibility > 0.5:
 
                 cv2.circle(
 
@@ -297,7 +312,7 @@ Error:
                         int(lm.y * h)
                     ),
 
-                    6,
+                    5,
 
                     (255, 0, 0),
 
@@ -305,7 +320,7 @@ Error:
                 )
 
     # =========================================================
-    # NO POSE WARNING
+    # NO POSE
     # =========================================================
 
     def _draw_no_pose_warnings(
@@ -362,6 +377,30 @@ Error:
         ex_type
     ):
 
+        h, _ = img.shape[:2]
+
+        reps = metrics.get(
+            "reps",
+            0
+        )
+
+        cv2.putText(
+
+            img,
+
+            f"REPS: {reps}",
+
+            (20, 45),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            1,
+
+            (0, 255, 255),
+
+            3
+        )
+
         if ex_type == "Squats":
 
             self._draw_squats_overlays(
@@ -398,7 +437,7 @@ Error:
             )
 
     # =========================================================
-    # SQUAT OVERLAY
+    # SQUAT
     # =========================================================
 
     def _draw_squats_overlays(
@@ -414,17 +453,22 @@ Error:
             "N/A"
         )
 
+        knee = metrics.get(
+            "knee_angle",
+            0
+        )
+
         cv2.putText(
 
             img,
 
-            f"DEPTH: {depth}",
+            f"KNEE: {knee} | DEPTH: {depth}",
 
             (20, h - 20),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            1,
+            0.8,
 
             (0, 255, 0),
 
@@ -432,7 +476,7 @@ Error:
         )
 
     # =========================================================
-    # PUSHUP OVERLAY
+    # PUSHUP
     # =========================================================
 
     def _draw_pushup_overlays(
@@ -453,17 +497,22 @@ Error:
             "N/A"
         )
 
+        elbow = metrics.get(
+            "elbow_angle",
+            0
+        )
+
         cv2.putText(
 
             img,
 
-            f"BODY: {body} | HIP: {hip}",
+            f"ELBOW: {elbow} | BODY: {body} | HIP: {hip}",
 
             (20, h - 20),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            1,
+            0.7,
 
             (0, 255, 0),
 
@@ -471,7 +520,7 @@ Error:
         )
 
     # =========================================================
-    # BICEPS CURL OVERLAY
+    # BICEPS
     # =========================================================
 
     def _draw_curl_overlays(
@@ -487,17 +536,22 @@ Error:
             "N/A"
         )
 
+        elbow = metrics.get(
+            "elbow_angle",
+            0
+        )
+
         cv2.putText(
 
             img,
 
-            f"SWING: {swing}",
+            f"ELBOW: {elbow} | SWING: {swing}",
 
             (20, h - 20),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            1,
+            0.8,
 
             (0, 255, 0),
 
@@ -505,7 +559,7 @@ Error:
         )
 
     # =========================================================
-    # SHOULDER PRESS OVERLAY
+    # SHOULDER PRESS
     # =========================================================
 
     def _draw_press_overlays(
@@ -526,17 +580,56 @@ Error:
             "N/A"
         )
 
+        elbow = metrics.get(
+            "elbow_angle",
+            0
+        )
+
         cv2.putText(
 
             img,
 
-            f"EXT: {extension} | BACK: {back}",
+            f"ELBOW: {elbow}",
 
-            (20, h - 20),
+            (20, h - 70),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            1,
+            0.8,
+
+            (0, 255, 0),
+
+            2
+        )
+
+        cv2.putText(
+
+            img,
+
+            f"EXT: {extension}",
+
+            (20, h - 40),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            0.8,
+
+            (0, 255, 0),
+
+            2
+        )
+
+        cv2.putText(
+
+            img,
+
+            f"BACK: {back}",
+
+            (20, h - 10),
+
+            cv2.FONT_HERSHEY_SIMPLEX,
+
+            0.8,
 
             (0, 255, 0),
 
@@ -544,7 +637,7 @@ Error:
         )
 
     # =========================================================
-    # LUNGE OVERLAY
+    # LUNGES
     # =========================================================
 
     def _draw_lunge_overlays(
@@ -560,17 +653,22 @@ Error:
             "N/A"
         )
 
+        knee = metrics.get(
+            "front_knee_angle",
+            0
+        )
+
         cv2.putText(
 
             img,
 
-            f"BALANCE: {balance}",
+            f"KNEE: {knee} | BALANCE: {balance}",
 
             (20, h - 20),
 
             cv2.FONT_HERSHEY_SIMPLEX,
 
-            1,
+            0.7,
 
             (0, 255, 0),
 
@@ -578,7 +676,7 @@ Error:
         )
 
     # =========================================================
-    # PROCESS VIDEO FRAME
+    # PROCESS FRAME
     # =========================================================
 
     def recv(
@@ -586,17 +684,15 @@ Error:
         frame
     ):
 
-        # -----------------------------------------------------
-        # FRAME TO NUMPY
-        # -----------------------------------------------------
+        # =====================================================
+        # FRAME
+        # =====================================================
 
         image = frame.to_ndarray(
             format="bgr24"
         )
 
-        # -----------------------------------------------------
-        # MIRROR CAMERA
-        # -----------------------------------------------------
+        # Mirror camera
 
         image = cv2.flip(
             image,
@@ -608,35 +704,36 @@ Error:
             dtype=np.uint8
         )
 
-        # -----------------------------------------------------
-        # BGR -> RGB
-        # -----------------------------------------------------
+        # =====================================================
+        # RGB
+        # =====================================================
 
         rgb_image = cv2.cvtColor(
             image,
             cv2.COLOR_BGR2RGB
         )
 
-        # -----------------------------------------------------
-        # CREATE MEDIAPIPE IMAGE
-        # -----------------------------------------------------
+        # =====================================================
+        # MEDIAPIPE IMAGE
+        # =====================================================
 
         mp_image = mp.Image(
 
-            image_format=mp.ImageFormat.SRGB,
+            image_format=
+                mp.ImageFormat.SRGB,
 
             data=rgb_image
         )
 
-        # -----------------------------------------------------
+        # =====================================================
         # TIMESTAMP
-        # -----------------------------------------------------
+        # =====================================================
 
         self._frame_timestamps_ms += 30
 
-        # -----------------------------------------------------
-        # DETECT POSE
-        # -----------------------------------------------------
+        # =====================================================
+        # POSE DETECTION
+        # =====================================================
 
         result = (
             self._landmarker.detect_for_video(
@@ -654,15 +751,18 @@ Error:
             landmarks = result.pose_landmarks[0]
 
             # Draw skeleton
+
             self._draw_skeleton(
                 image,
                 landmarks
             )
 
-            # Get selected exercise
+            # Current exercise
+
             ex_type = self.get_exercise()
 
-            # Get detector
+            # Current detector
+
             detector = self._detectors.get(
                 ex_type
             )
@@ -671,20 +771,48 @@ Error:
 
                 try:
 
+                    # =========================================
+                    # PROCESS EXERCISE
+                    # =========================================
+
                     metrics = detector.process(
                         landmarks
                     )
 
+                    # =========================================
+                    # POSE DETECTED
+                    # =========================================
+
                     metrics["pose_detected"] = True
 
-                    # Draw metrics
+                    # =========================================
+                    # DEBUG LOG
+                    # =========================================
+
+                    print(
+                        f"EXERCISE={ex_type} | "
+                        f"REPS={metrics.get('reps', 0)} | "
+                        f"ELBOW={metrics.get('elbow_angle', 'N/A')} | "
+                        f"EXTENSION={metrics.get('extension_status', 'N/A')}"
+                    )
+
+                    # =========================================
+                    # DRAW
+                    # =========================================
+
                     self._draw_overlays(
+
                         image,
+
                         metrics,
+
                         ex_type
                     )
 
-                    # Save metrics
+                    # =========================================
+                    # SAVE METRICS
+                    # =========================================
+
                     self.set_latest_metrics(
                         metrics
                     )
@@ -692,7 +820,20 @@ Error:
                 except Exception as e:
 
                     print(
-                        f"Detector error: {e}"
+                        "========================================"
+                    )
+
+                    print(
+                        "DETECTOR ERROR"
+                    )
+
+                    print(
+                        type(e).__name__,
+                        str(e)
+                    )
+
+                    print(
+                        "========================================"
                     )
 
         # =====================================================
@@ -707,23 +848,26 @@ Error:
 
             with self._lock:
 
-                if self._latest_metrics is not None:
+                self._latest_metrics = {
 
-                    self._latest_metrics[
-                        "pose_detected"
-                    ] = False
+                    "reps": (
+                        self._latest_metrics.get(
+                            "reps",
+                            0
+                        )
+                    ),
 
-                else:
-
-                    self._latest_metrics = {
-                        "pose_detected": False
-                    }
+                    "pose_detected":
+                        False,
+                }
 
         # =====================================================
         # RETURN FRAME
         # =====================================================
 
         return av.VideoFrame.from_ndarray(
+
             image,
+
             format="bgr24"
         )
