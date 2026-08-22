@@ -6,21 +6,40 @@ import pandas as pd
 from services.auth.login_wall import render_login_wall
 from services.state.session_defaults import initial_session_defaults
 from services.config.workout_config import EXERCISE_OPTIONS
+
 from services.ui.style_loader import (
     load_css,
     inject_local_font,
     inject_webrtc_styles,
 )
+
 from services.persistence.exercise_repository import (
     init_db,
     get_users_exercises,
 )
 
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
-from services.vision.exercise_video_processor import VideoProcessorClass
-from services.tracking.metrics import sync_metrics_update
+from streamlit_webrtc import (
+    webrtc_streamer,
+    WebRtcMode,
+)
+
+from services.vision.exercise_video_processor import (
+    VideoProcessorClass,
+)
+
+from services.tracking.metrics import (
+    sync_metrics_update,
+)
 
 from groq import Groq
+
+from services.coaching.llm import LLMCoach
+from services.coaching.tts import TextToSpeech
+
+from services.coaching.voice_pipeline import (
+    VoicePipeline,
+    autoplay_audio,
+)
 
 
 def main():
@@ -109,6 +128,10 @@ def main():
                     api_key=api_key
                 )
 
+                # -------------------------------------------------
+                # GET AVAILABLE GROQ MODELS
+                # -------------------------------------------------
+
                 models = groq_client.models.list()
 
                 available_models = [
@@ -130,7 +153,10 @@ def main():
                     )
                 )
 
-                # Voice pipeline temporarily disabled
+                # -------------------------------------------------
+                # VOICE PIPELINE TEMPORARILY DISABLED
+                # -------------------------------------------------
+
                 st.session_state.voice_pipeline = None
 
                 st.session_state.groq_models_checked = True
@@ -556,14 +582,27 @@ def main():
             async_processing=True,
         )
 
-        # Sync processor metrics with Streamlit session state
+        # =====================================================
+        # SYNC VIDEO PROCESSOR METRICS
+        # =====================================================
+
         sync_metrics_update(
             context
         )
 
         # IMPORTANT:
-        # Do NOT call st.rerun() continuously here.
-        # Continuous reruns can interrupt the WebRTC/ICE connection.
+        # Do NOT continuously call st.rerun() here.
+        #
+        # Continuous reruns can interrupt the WebRTC
+        # connection and cause aioice / ICE errors.
+        #
+        # The previous:
+        #
+        # if context.state.playing:
+        #     time.sleep(0.25)
+        #     st.rerun()
+        #
+        # has intentionally been removed.
 
         inject_webrtc_styles()
 
