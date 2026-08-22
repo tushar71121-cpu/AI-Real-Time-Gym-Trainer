@@ -3,20 +3,22 @@ import time
 import pandas as pd
 import streamlit as st
 
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+
 from services.auth.login_wall import render_login_wall
 from services.state.session_defaults import initial_session_defaults
 from services.config.workout_config import EXERCISE_OPTIONS
+
 from services.ui.style_loader import (
     load_css,
     inject_local_font,
     inject_webrtc_styles,
 )
+
 from services.persistence.exercise_repository import (
     init_db,
     get_users_exercises,
 )
-
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 from services.vision.exercise_video_processor import (
     VideoProcessorClass
@@ -38,10 +40,10 @@ def main():
     # =========================================================
 
     st.set_page_config(
-        page_title="AI Real-time GYM Coach",
         page_icon="🏋️‍♂️",
-        layout="centered",
+        page_title="AI Real-time GYM Coach",
         initial_sidebar_state="expanded",
+        layout="centered",
     )
 
     # =========================================================
@@ -56,71 +58,29 @@ def main():
         )
     )
 
-    font_path = os.path.join(
-        os.getcwd(),
-        "static",
-        "AdobeClean.otf",
+    inject_local_font(
+        os.path.join(
+            os.getcwd(),
+            "static",
+            "AdobeClean.otf",
+        ),
+        "AdobeClean",
     )
-
-    if os.path.exists(font_path):
-
-        inject_local_font(
-            font_path,
-            "AdobeClean",
-        )
 
     # =========================================================
     # DATABASE
     # =========================================================
 
-    try:
-
-        init_db()
-
-    except Exception as e:
-
-        st.error(
-            f"Database initialization error: {e}"
-        )
+    init_db()
 
     # =========================================================
     # LOGIN
     # =========================================================
 
     if not render_login_wall():
-
         return
 
-    # =========================================================
-    # SESSION DEFAULTS
-    # =========================================================
-
     initial_session_defaults()
-
-    # =========================================================
-    # IMPORTANT DEFAULTS
-    # =========================================================
-
-    if "workout_started" not in st.session_state:
-        st.session_state.workout_started = False
-
-    if "reps" not in st.session_state:
-        st.session_state.reps = 0
-
-    if "sets_completed" not in st.session_state:
-        st.session_state.sets_completed = 0
-
-    if "current_set_reps" not in st.session_state:
-        st.session_state.current_set_reps = 0
-
-    if "workout_completed" not in st.session_state:
-        st.session_state.workout_completed = False
-
-    if "last_saved_sets_completed" not in st.session_state:
-        st.session_state.last_saved_sets_completed = 0
-
-    if "set_cycle_started_at" not in st.session_state:
-        st.session_state.set_cycle_started_at = time.time()
 
     # =========================================================
     # WORKOUT STATE
@@ -137,28 +97,23 @@ def main():
 
     with st.sidebar:
 
-        st.title(
-            "🏋️‍♂️ Apna AI Coach"
-        )
+        st.title("🏋️‍♂️ Apna AI Coach")
 
         username = st.session_state.get(
             "username"
         )
 
         if username:
-
             st.caption(
-                f"👤 Login as {username}"
+                f"👤 Logged in as {username}"
             )
 
         st.divider()
 
-        st.subheader(
-            "Workout Plan"
-        )
+        st.subheader("Workout Plan")
 
         # =====================================================
-        # WORKOUT NOT STARTED
+        # BEFORE WORKOUT
         # =====================================================
 
         if not workout_started:
@@ -181,61 +136,71 @@ def main():
             plan_reps = st.number_input(
                 "Reps per Set",
                 min_value=1,
-                max_value=100,
+                max_value=50,
                 value=10,
                 step=1,
                 key="plan_reps",
             )
 
-            st.write("")
+            st.markdown("")
 
-            start_button = st.button(
-                "▶️ Start Workout",
+            start_session_button = st.button(
+                "▶ Start Workout",
                 width="stretch",
                 key="start_session_button",
             )
 
-            if start_button:
+            if start_session_button:
 
-                # ---------------------------------------------
-                # SAVE WORKOUT SETTINGS
-                # ---------------------------------------------
+                # -------------------------------------------------
+                # WORKOUT CONFIG
+                # -------------------------------------------------
 
                 st.session_state.exercise_type = (
                     plan_exercise
                 )
 
-                st.session_state.target_sets = int(
-                    plan_sets
+                st.session_state.target_sets = (
+                    int(plan_sets)
                 )
 
-                st.session_state.reps_per_set = int(
-                    plan_reps
+                st.session_state.reps_per_set = (
+                    int(plan_reps)
                 )
 
-                # ---------------------------------------------
+                # -------------------------------------------------
                 # RESET COUNTERS
-                # ---------------------------------------------
+                # -------------------------------------------------
 
                 st.session_state.reps = 0
 
-                st.session_state.sets_completed = 0
-
                 st.session_state.current_set_reps = 0
+
+                st.session_state.sets_completed = 0
 
                 st.session_state.workout_completed = False
 
+                # -------------------------------------------------
+                # RESET NOTIFICATIONS
+                # -------------------------------------------------
+
                 st.session_state.last_saved_sets_completed = 0
 
+                st.session_state.last_notified_sets_completed = 0
+
                 st.session_state.last_notified_workout_complete = False
+
+                # -------------------------------------------------
+                # TIMER
+                # -------------------------------------------------
 
                 st.session_state.set_cycle_started_at = (
                     time.time()
                 )
 
-                # ---------------------------------------------
-                # RESET OLD METRICS
-                # ---------------------------------------------
+                # -------------------------------------------------
+                # CLEAR OLD METRICS
+                # -------------------------------------------------
 
                 st.session_state.knee_angle = 0
                 st.session_state.back_angle = 0
@@ -255,16 +220,23 @@ def main():
                 st.session_state.torso_angle = 0
                 st.session_state.balance_status = "N/A"
 
-                # ---------------------------------------------
+                # -------------------------------------------------
+                # AUDIO / COACH
+                # -------------------------------------------------
+
+                st.session_state.audio_to_play = None
+                st.session_state.coach_feedback = None
+
+                # -------------------------------------------------
                 # START
-                # ---------------------------------------------
+                # -------------------------------------------------
 
                 st.session_state.workout_started = True
 
                 st.rerun()
 
         # =====================================================
-        # WORKOUT STARTED
+        # WORKOUT ACTIVE
         # =====================================================
 
         else:
@@ -284,21 +256,30 @@ def main():
                 0,
             )
 
-            st.info(
-                f"**{exercise}**\n\n"
+            st.success(
+                f"**{exercise}**"
+            )
+
+            st.caption(
                 f"{target_sets} Sets × "
                 f"{reps_per_set} Reps"
             )
 
-            end_button = st.button(
-                "⏹️ End Workout",
-                width="stretch",
+            st.markdown("")
+
+            end_session_button = st.button(
+                "⏹ End Workout",
                 key="end_session_button",
+                width="stretch",
             )
 
-            if end_button:
+            if end_session_button:
 
                 st.session_state.workout_started = False
+
+                st.session_state.audio_to_play = None
+
+                st.session_state.coach_feedback = None
 
                 st.rerun()
 
@@ -310,9 +291,7 @@ def main():
 
             st.divider()
 
-            st.subheader(
-                "Progress"
-            )
+            st.subheader("Progress")
 
             total_reps = st.session_state.get(
                 "reps",
@@ -345,7 +324,7 @@ def main():
             )
 
             st.metric(
-                "Current Set Reps",
+                "Current Set",
                 f"{current_set_reps} / {reps_per_set}",
             )
 
@@ -358,11 +337,11 @@ def main():
             # EXERCISE METRICS
             # =================================================
 
+            st.divider()
+
             exercise = st.session_state.get(
                 "exercise_type"
             )
-
-            st.divider()
 
             # -------------------------------------------------
             # SQUATS
@@ -430,7 +409,7 @@ def main():
             elif exercise == "Biceps Curls (Dumbbell)":
 
                 st.subheader(
-                    "Biceps Curl Metrics"
+                    "Curl Metrics"
                 )
 
                 st.metric(
@@ -514,7 +493,7 @@ def main():
                 )
 
     # =========================================================
-    # MAIN TITLE
+    # MAIN HEADER
     # =========================================================
 
     st.title(
@@ -526,7 +505,20 @@ def main():
     )
 
     # =========================================================
-    # CAMERA
+    # COACH FEEDBACK
+    # =========================================================
+
+    if st.session_state.get(
+        "coach_feedback"
+    ):
+
+        st.success(
+            f"🤖 **Coach:** "
+            f"{st.session_state.coach_feedback}"
+        )
+
+    # =========================================================
+    # BEFORE WORKOUT SCREEN
     # =========================================================
 
     if not workout_started:
@@ -534,36 +526,64 @@ def main():
         st.markdown(
             """
             <div style="
-                border: 2px dashed #444;
-                border-radius: 12px;
-                padding: 45px 25px;
+                margin: 60px auto;
+                padding: 45px 30px;
                 text-align: center;
-                color: #888;
-                margin-top: 30px;
-                margin-bottom: 30px;
+                background: #111111;
+                border: 1px solid #2a2a2a;
+                border-radius: 18px;
             ">
-                <h2 style="color:#ccc;">
-                    👈 Set your workout plan
+
+                <div style="
+                    font-size: 55px;
+                    margin-bottom: 15px;
+                ">
+                    🏋️
+                </div>
+
+                <h2 style="
+                    color: #ffffff;
+                    margin-bottom: 10px;
+                ">
+                    Ready to Start?
                 </h2>
 
-                <p>
-                    Select exercise, sets and reps
-                    from the sidebar and start your workout.
+                <p style="
+                    color: #999999;
+                    font-size: 16px;
+                    margin-bottom: 8px;
+                ">
+                    Choose your exercise and workout plan
+                    from the sidebar.
                 </p>
+
+                <p style="
+                    color: #666666;
+                    font-size: 14px;
+                ">
+                    Your AI Coach will analyze your form
+                    in real time.
+                </p>
+
             </div>
             """,
             unsafe_allow_html=True,
         )
 
+    # =========================================================
+    # CAMERA
+    # =========================================================
+
     else:
 
         st.subheader(
-            "📹 Live Camera"
+            "📷 Live AI Exercise Analysis"
         )
 
-        # =====================================================
-        # WEBRTC
-        # =====================================================
+        st.caption(
+            "Allow camera access and position your full body "
+            "inside the frame."
+        )
 
         context = webrtc_streamer(
 
@@ -571,36 +591,64 @@ def main():
 
             mode=WebRtcMode.SENDRECV,
 
-            video_processor_factory=VideoProcessorClass,
+            video_processor_factory=(
+                VideoProcessorClass
+            ),
 
             rtc_configuration={
-
                 "iceServers": [
-
                     {
                         "urls": [
-                            "stun:stun.relay.metered.ca:80"
+                            "stun:stun.relay.metered.ca:80",
                         ],
                     },
-
                     {
                         "urls": [
                             "turn:in.relay.metered.ca:80",
-                            "turn:in.relay.metered.ca:80?transport=tcp",
-                            "turn:in.relay.metered.ca:443",
-                            "turns:in.relay.metered.ca:443?transport=tcp",
                         ],
-
-                        # IMPORTANT:
-                        # Put your TURN credentials in
-                        # Streamlit Secrets instead of
-                        # hardcoding them here.
-
                         "username": st.secrets.get(
                             "TURN_USERNAME",
                             "",
                         ),
-
+                        "credential": st.secrets.get(
+                            "TURN_PASSWORD",
+                            "",
+                        ),
+                    },
+                    {
+                        "urls": [
+                            "turn:in.relay.metered.ca:80?transport=tcp",
+                        ],
+                        "username": st.secrets.get(
+                            "TURN_USERNAME",
+                            "",
+                        ),
+                        "credential": st.secrets.get(
+                            "TURN_PASSWORD",
+                            "",
+                        ),
+                    },
+                    {
+                        "urls": [
+                            "turn:in.relay.metered.ca:443",
+                        ],
+                        "username": st.secrets.get(
+                            "TURN_USERNAME",
+                            "",
+                        ),
+                        "credential": st.secrets.get(
+                            "TURN_PASSWORD",
+                            "",
+                        ),
+                    },
+                    {
+                        "urls": [
+                            "turns:in.relay.metered.ca:443?transport=tcp",
+                        ],
+                        "username": st.secrets.get(
+                            "TURN_USERNAME",
+                            "",
+                        ),
                         "credential": st.secrets.get(
                             "TURN_PASSWORD",
                             "",
@@ -621,61 +669,21 @@ def main():
         # SYNC METRICS
         # =====================================================
 
-        if context is not None:
-
-            try:
-
-                sync_metrics_update(
-                    context
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"Metrics error: {type(e).__name__}: {e}"
-                )
+        sync_metrics_update(
+            context
+        )
 
         # =====================================================
-        # DEBUG METRICS
-        # =====================================================
-
-        # Ye temporary debug section hai.
-        # Agar metrics fir bhi 0 aaye to isse pata chalega
-        # processor kya data bhej raha hai.
-
-        if context is not None:
-
-            processor = getattr(
-                context,
-                "video_processor",
-                None,
-            )
-
-            if processor is not None:
-
-                latest = processor.get_latest_metrics()
-
-                if latest:
-
-                    with st.expander(
-                        "🔧 Debug Metrics"
-                    ):
-
-                        st.json(
-                            latest
-                        )
-
-        # =====================================================
-        # REFRESH
+        # KEEP METRICS UPDATED
         # =====================================================
 
         if (
-            context is not None
+            context
             and hasattr(context, "state")
             and context.state.playing
         ):
 
-            time.sleep(0.5)
+            time.sleep(0.25)
 
             st.rerun()
 
@@ -696,72 +704,59 @@ def main():
         0,
     )
 
-    if isinstance(user_id, int):
+    if isinstance(
+        user_id,
+        int,
+    ):
 
-        try:
+        history_rows = get_users_exercises(
+            user_id
+        )
 
-            history_rows = get_users_exercises(
-                user_id
-            )
+        arr = [
+            {
+                "Exercise": row["exercise_name"],
+                "Reps": row["reps"],
+                "Sets": row["sets"],
+                "Time (sec)": row["time"],
+                "Date": row["created_at"],
+            }
+            for row in history_rows
+        ]
 
-        except Exception as e:
+        df = pd.DataFrame(
+            arr
+        )
 
-            history_rows = []
+        if not df.empty:
 
-            st.warning(
-                f"Could not load workout history: {e}"
-            )
+            df["Date"] = pd.to_datetime(
+                df["Date"]
+            ).dt.date
 
-        if history_rows:
-
-            arr = []
-
-            for row in history_rows:
-
-                arr.append(
+            agg_df = (
+                df.groupby(
+                    [
+                        "Exercise",
+                        "Date",
+                    ]
+                )
+                .agg(
                     {
-                        "Exercise": row["exercise_name"],
-                        "Reps": row["reps"],
-                        "Sets": row["sets"],
-                        "Time (sec)": row["time"],
-                        "Date": row["created_at"],
+                        "Reps": "sum",
+                        "Sets": "sum",
+                        "Time (sec)": "sum",
                     }
                 )
-
-            df = pd.DataFrame(
-                arr
+                .reset_index()
             )
 
-            if not df.empty:
+            agg_df.index += 1
 
-                df["Date"] = pd.to_datetime(
-                    df["Date"]
-                ).dt.date
-
-                agg_df = (
-                    df.groupby(
-                        [
-                            "Exercise",
-                            "Date",
-                        ]
-                    )
-                    .agg(
-                        {
-                            "Reps": "sum",
-                            "Sets": "sum",
-                            "Time (sec)": "sum",
-                        }
-                    )
-                    .reset_index()
-                )
-
-                agg_df.index += 1
-
-                st.dataframe(
-                    agg_df,
-                    width="stretch",
-                    hide_index=False,
-                )
+            st.table(
+                agg_df,
+                border="horizontal",
+            )
 
         else:
 
@@ -771,7 +766,7 @@ def main():
 
 
 # =============================================================
-# RUN
+# RUN APP
 # =============================================================
 
 if __name__ == "__main__":
